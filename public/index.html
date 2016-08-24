@@ -1,0 +1,194 @@
+<html>
+<head>
+<title>Hello</title>
+<script src="assets/jquery/dist/jquery.min.js"></script>
+<script type="text/javascript" 
+        src="http://localhost:8000/faye/client.js">
+        </script>
+<script type="text/javascript">
+$(function() {
+	var client = new Faye.Client('http://localhost:8000/faye');
+	client.addExtension({
+		incoming: function(message, callback) {
+			console.log('incoming ', message);
+
+			if (message.channel !== '/meta/subscribe')
+				return callback(message);
+
+			callback(message);
+		},
+		outgoing: function(message, callback) {
+			if (message.channel !== '/meta/subscribe') {
+
+				if (message.channel === '/chat/service') {
+					message.ext = {channel: ChatSession.user.channel};
+				}
+
+				return callback(message);
+			}
+
+			if (!message.ext) message.ext = {};
+			message.ext.name = ChatSession.user.name;
+			message.ext.uid = ChatSession.user.id;
+			message.ext.channel = ChatSession.user.channel;
+			
+			callback(message);
+		}
+	});
+	//////////////////////
+	var holdShift = false;
+	var $textfield = $('.chatbox-textfield');
+	var $messages = $('.chatbox-messages');
+
+	function addMessage(message) {
+		var msg = 
+		'<div class="chatbox-message user-'+(message.name!=ChatSession.user.name ? 'other' : 'you')+'" data-other-name="'+message.name+'"><div class="chatbox-user-name">'+message.name+'</div>' + 
+			message.message + 
+		'</div>';
+
+		$messages.append(msg);
+		$('.chatbox-messages-wrap').scrollTop($('.chatbox-messages').siblings('div').offset().top * 1000);
+	}
+
+	window.addMessage = addMessage;
+
+	function sendMessage(message) {
+		addMessage({
+			message: message,
+			name: ChatSession.user.name
+		});
+		client.publish('/chat/service', message);
+	}
+
+	function formatMessage(message) {
+		return message.replace("\n", '<br>').replace(/<br>$/g, '');
+	}
+	
+	$textfield.on('keydown', function(e) {
+		if (e.which == 16) holdShift = true;
+
+		if (!holdShift && e.which == 13 && $textfield.val().length == 0) {
+			$textfield.val('');
+		}
+	});
+
+	$textfield.on('keyup', function(e) {
+		if (e.which == 16) holdShift = false;
+
+		var msg = '';
+		// if user didn't hold Shift key and pressed Enter...
+		if (!holdShift && e.which == 13) {
+			msg = $textfield.val();
+			$textfield.val('');
+
+			sendMessage(formatMessage(msg));
+		}
+		else if (!holdShift && e.which == 13 && $textfield.val().length == 0) {
+			$textfield.val('');
+		}
+		if (msg.length) {
+			console.log(msg);
+		}
+	});
+
+	/////////////
+
+	var ChatSession = {};
+	ChatSession.user = {
+		id: 1,
+		name: 'Mark',
+		channel: '/chat/service/mark-1'
+	};
+	// ChatSession.started = false;
+	$('.chatbox-textfield').attr('disabled', 'disabled');
+
+	var subscription = client.subscribe('/chat/service', function(message) {
+		console.log('received from /chat/service the message ', message);
+	});
+	subscription.then(function() {
+		// ChatSession.started = true;
+		$('.chatbox-textfield').removeAttr('disabled');
+		console.log('subscription to /chat/service is active!');
+	});
+
+	client.subscribe(ChatSession.user.channel, function(message) {
+			console.log('received from ', ChatSession.user.channel, ' the message ', message);
+			addMessage(message);
+		})
+		.then(function() {
+			console.log('subscription to '+ChatSession.user.channel+' is active!');
+		});
+});
+</script>
+<style type="text/css">
+.chatbox {
+	width: 400px;
+	background: rgb(173, 216, 230);
+    min-height: 500px;
+    padding: 5px;
+    font-family: verdana, serif;
+    font-size: 15px;
+}
+.centered-box {
+	margin: 0 auto;
+}
+.chatbox-messages-wrap {
+	height: 420px;
+	margin-bottom:5px;
+	overflow-x: hidden;
+	overflow-y: scroll;
+	clear: both;
+}
+.chatbox-messages {
+	/*background: white;*/
+	/*min-height: 420px;*/
+}
+.chatbox-textfield {
+	border: 0px none;
+	font-size: 17px;
+	height: 80px;
+	padding: 5px;
+	width: 100%;
+}
+.chatbox-message {
+	max-width: 87%;
+	min-width: 15%;
+	padding: 10px;
+	margin-top: 5px;
+	margin-bottom: 5px;
+	color: #0e0e0e;
+	display: block;
+	clear:both;
+	border: 0px solid #000000;
+}
+.chatbox-message.user-other {
+	background: white;
+	float: left;
+	border-radius: 0px 10px 0px 10px;
+	-moz-border-radius: 0px 10px 0px 10px;
+}
+.chatbox-message.user-you {
+	background: #d8e3e6;
+	float: right;
+	margin-right: 5px;
+	border-radius: 10px 0px 10px 0;
+	-moz-border-radius: 10px 0px 10px 0;
+}
+.chatbox-user-name {
+	font-size: 11px;
+}
+.clear {
+	clear: both;
+}
+</style>
+</head>
+<body>
+<div class="chatbox centered-box">
+	<div class="chatbox-messages-wrap">
+		<div class="chatbox-messages"></div>
+		<div class="clear"></div>
+	</div>
+	<textarea class="chatbox-textfield" type="text" placeholder="Enter message here"></textarea>
+</div>
+</body>
+</html>
